@@ -1,10 +1,12 @@
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Scanner;
 import java.util.StringTokenizer;
 
 public class MyFTPClient {
-    private boolean DEBUG = true;
+    private boolean DEBUG = false;
     private Socket socket = null;
     private Socket dataSocket = null;
     private BufferedReader reader = null;
@@ -118,11 +120,18 @@ public class MyFTPClient {
             System.out.println("Connection closed");
     }
 
-    // Transfer file to remote server
-    private boolean stor(File file) throws IOException{
+    private boolean fileExists(String filename) throws IOException{
+        ArrayList<String> filenames = getNLST(pwd());
+        return filenames.contains(filename);
+    }
+
+
+    // Upload file to remote server
+    // Replace file with the same filename
+    private boolean stor(String filename) throws IOException{
+        File file = new File(filename);
         if(file.isDirectory())
             throw new IOException("MyFTPClient cannot upload a directory");
-        String filename = file.getName();
         FileInputStream inputStream = new FileInputStream(file);
         BufferedInputStream input = new BufferedInputStream(inputStream);
         sendLine("STOR " + filename);
@@ -173,17 +182,18 @@ public class MyFTPClient {
     }
 
     // list all names of files & directories under directory specified
-    private synchronized boolean getNLST(String dir) throws IOException{
+    private synchronized ArrayList<String> getNLST(String dir) throws IOException{
         sendLine("NLST " + dir);
         InputStreamReader inputStreamReader = new InputStreamReader(dataSocket.getInputStream(), StandardCharsets.UTF_8);
         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+        ArrayList<String> dirs = new ArrayList<>();
         String line;
         while((line = bufferedReader.readLine()) != null) {
-            System.out.println(line);
+            dirs.add(line.substring(1));
         }
         dataSocket.getInputStream().close();
         inputStreamReader.close();
-        return true;
+        return dirs;
     }
 
     // list details of all files and directories under directory specified
@@ -211,17 +221,21 @@ public class MyFTPClient {
     }
 
     // Retrieve file specified
+    // Get fileSize first in case of response after transfer completing
     private boolean retrieveAsciiFile(String filename) throws IOException{
+        long fileSize = getFileSize(filename);
         ascii();
         sendLine("RETR " + filename);
         response = readLine();
-        if(!response.startsWith("250"))
+        System.out.println(response);
+        // System.out.println(response);
+        // 125 Data connection already open; Transfer starting
+        if(!response.startsWith("125"))
             throw new IOException(response);
         BufferedInputStream in = new BufferedInputStream(dataSocket.getInputStream());
         BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(filename));
         byte[] buffer = new byte[4096];
         long cnt = 1;
-        long fileSize = getFileSize(filename);
         while(in.read(buffer) != -1) {
             out.write(buffer);
             cnt++;
@@ -230,6 +244,8 @@ public class MyFTPClient {
         out.flush();
         out.close();
         System.out.println(String.format("Transferred: %d / %d", fileSize ,fileSize));
+        response = readLine();
+        System.out.println(response);
         in.close();
         return true;
     }
@@ -300,7 +316,11 @@ public class MyFTPClient {
         return line;
     }
 
-    // send request to server
+    /** @param cmd
+     *         commands sent to client
+     * @throws IOException
+     *         if socket is unopened
+     */
     private void sendLine(String cmd) throws IOException{
         if(socket == null)
             throw new IOException("socket needs to be connected");
@@ -320,11 +340,13 @@ public class MyFTPClient {
         MyFTPClient myFTPClient = new MyFTPClient();
         myFTPClient.connect("192.168.73.1");
         myFTPClient.login("king","0925");
-        //myFTPClient.stor(new File("D:/king.mp4"));
-        //myFTPClient.renameFile("kong.txt", "king.txt");
+        //myFTPClient.stor("D:/king.txt");
+        //myFTPClient.renameFile("king.jpg", "kong.jpg");
         //System.out.println(myFTPClient.pwd());
         //myFTPClient.mkdir("NewFolder");
-        //myFTPClient.getNLST("/");
+        //ArrayList<String> strs = myFTPClient.getNLST("/");
+        //for(String str: strs)
+        //    System.out.println(str);
         //myFTPClient.getList("/");
         //myFTPClient.deleteFile("king.txt");
         //myFTPClient.deleteDir("upload");
