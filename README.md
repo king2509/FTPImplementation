@@ -1,4 +1,6 @@
 # FTPImplementation
 A simple implementation of FTP protocol including client &amp; server
 
-Next task: remind user that stor operation will replace file with the same name
+Data Transfer Mode: PASV  
+1. DataSocket needs constructing before sending data tranfer command
+2. dataSocket will close right after data transfer complete
