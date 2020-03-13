@@ -2,6 +2,8 @@ import javax.imageio.stream.ImageOutputStreamImpl;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Scanner;
 import java.util.StringTokenizer;
 
 public class MyFTPClient {
@@ -112,6 +114,21 @@ public class MyFTPClient {
         System.out.println("Connection closed");
     }
 
+    boolean uploadFile(String filename) throws IOException{
+        ArrayList<String> filenames = getNLST(pwd());
+        if(filenames.contains(filename)) {
+            System.out.println("File exists! Replace it with the new file?");
+            System.out.println("type \"y\" to continue");
+            Scanner input = new Scanner(System.in);
+            String temp = input.next();
+            if(!temp.equals("y")) {
+                return false;
+            }
+        }
+        return stor(filename);
+    }
+
+
     // Transfer file to remote server
     boolean stor(String filename) throws IOException{
         File file = new File(filename);
@@ -161,6 +178,11 @@ public class MyFTPClient {
 
     // mkdir  needs to check if directory exists
     synchronized boolean mkdir(String directoryName) throws IOException{
+        // if dir exists, then do nothing
+        if(fileExists(directoryName)) {
+            System.out.println("Dir already exists!");
+            return true;
+        }
         sendLine("MKD "+ directoryName);
         response = readLine();
         if(!response.startsWith("257"))
@@ -169,7 +191,7 @@ public class MyFTPClient {
     }
 
     // list all names of files & directories under directory specified
-    synchronized boolean getNLST(String dir) throws IOException{
+    synchronized ArrayList<String> getNLST(String dir) throws IOException{
         Socket dataSocket = getDataSocket();
         sendLine("NLST " + dir);
         response = readLine();
@@ -177,15 +199,16 @@ public class MyFTPClient {
             throw new IOException(response);
         InputStreamReader inputStreamReader = new InputStreamReader(dataSocket.getInputStream(), StandardCharsets.UTF_8);
         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+        ArrayList<String> res = new ArrayList<>();
         String line;
         while((line = bufferedReader.readLine()) != null) {
-            System.out.println(line);
+            res.add(line.substring(1));
         }
         response = readLine();
         dataSocket.close();
         if(!response.startsWith("226"))
             throw new IOException(response);
-        return response.startsWith("226");
+        return res;
     }
 
     // list details of all files and directories under directory specified
@@ -306,6 +329,15 @@ public class MyFTPClient {
         String response = readLine();
         return response.startsWith("200");
     }
+
+    // check if file/dir exists
+    boolean fileExists(String filename) throws IOException{
+        ArrayList<String> nameList = getNLST(pwd());
+        for(String str: nameList)
+            System.out.println(str);
+        return nameList.contains(filename);
+    }
+
 
     // read response from server
     private String readLine() throws IOException{
