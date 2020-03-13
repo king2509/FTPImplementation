@@ -1,17 +1,16 @@
+import javax.imageio.stream.ImageOutputStreamImpl;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Scanner;
 import java.util.StringTokenizer;
 
 public class MyFTPClient {
-    private boolean DEBUG = false;
+    private boolean DEBUG = true;
     private Socket socket = null;
-    private Socket dataSocket = null;
     private BufferedReader reader = null;
     private BufferedWriter writer = null;
     private String response = null;
+    private final int bufferSize = 4096;
 
     private MyFTPClient(){
 
@@ -41,34 +40,28 @@ public class MyFTPClient {
             throw new IOException("Connect First");
         sendLine("USER "+username);
         response = readLine();
-        if(!response.startsWith("331 ")) {
+        if(!response.startsWith("331")) {
             throw new IOException(response);
         }
         sendLine("PASS "+password);
         response = readLine();
-        if(!response.startsWith("230 ")) {
+        if(!response.startsWith("230")) {
             throw new IOException(response);
         }
         System.out.println("Logged successfully");
-        try{
-            establishDataSocket();
-            System.out.println("Establish dataSocket successfully");
-        } catch (IOException e) {
-            e.getStackTrace();
-        }
     }
 
-    // get dataSocket to transfer data
-    private synchronized void establishDataSocket() throws IOException{
+    // Set PASV mode & Establish a dataSocket
+    private synchronized Socket getDataSocket() throws IOException{
         String remoteIp = null;
         int remotePort = -1;
-        if(dataSocket != null)
-            return;
         sendLine("PASV");
         response = readLine();
         if(!response.startsWith("227")) {
             throw new IOException(response);
         }
+        // response of "PASV": (x,x,x,x,y1,y2)
+        // (x.x.x.x.y1.y2)  ip:x.x.x.x  port:y1*256+y2
         int opening = response.indexOf('(');
         int closing = response.indexOf(')');
         if(closing > 0) {
@@ -82,12 +75,12 @@ public class MyFTPClient {
                 throw new IOException("DataLink broken");
             }
         }
-        dataSocket = new Socket(remoteIp, remotePort);
+        return new Socket(remoteIp, remotePort);
     }
 
 
     // change working directory
-    private synchronized boolean cwd(String dir) throws IOException{
+    private synchronized boolean toDir(String dir) throws IOException{
         sendLine("CWD "+ dir);
         response = readLine();
         System.out.println(response);
@@ -116,22 +109,15 @@ public class MyFTPClient {
         }
         if(socket != null)
             socket.close();
-        if(DEBUG)
-            System.out.println("Connection closed");
+        System.out.println("Connection closed");
     }
 
-    private boolean fileExists(String filename) throws IOException{
-        ArrayList<String> filenames = getNLST(pwd());
-        return filenames.contains(filename);
-    }
-
-
-    // Upload file to remote server
-    // Replace file with the same filename
+    // Transfer file to remote server
     private boolean stor(String filename) throws IOException{
         File file = new File(filename);
         if(file.isDirectory())
             throw new IOException("MyFTPClient cannot upload a directory");
+        Socket dataSocket = getDataSocket();
         FileInputStream inputStream = new FileInputStream(file);
         BufferedInputStream input = new BufferedInputStream(inputStream);
         sendLine("STOR " + filename);
@@ -140,23 +126,24 @@ public class MyFTPClient {
         long fileSize = file.length();
         System.out.println("fileSize: " + fileSize);
         long cnt = 0;
-        byte[] buffer = new byte[4096];
+        byte[] buffer = new byte[bufferSize];
         while(input.read(buffer) > 0) {
             output.write(buffer);
             cnt++;
-            System.out.print(String.format("Transferred: %d / %d\r", cnt*4096 ,fileSize));
+            System.out.print(String.format("Transferred: %d / %d\r", cnt*bufferSize ,fileSize));
         }
         output.flush();
-        System.out.println(String.format("Transferred: %d / %d", fileSize ,fileSize));
         output.close();
         input.close();
+        dataSocket.close();
+        System.out.println(String.format("Transferred: %d / %d", fileSize ,fileSize));
         response = readLine();
         return response.startsWith("226 ");
     }
 
     // cd upper directory
     // if pwd==root, cdup success as well.
-    private synchronized boolean cdup() throws IOException{
+    private synchronized boolean toUpperDir() throws IOException{
         sendLine("CDUP");
         response = readLine();
         return response.startsWith("250");
@@ -176,43 +163,55 @@ public class MyFTPClient {
     private synchronized boolean mkdir(String directoryName) throws IOException{
         sendLine("MKD "+ directoryName);
         response = readLine();
-        if(!response.startsWith("250"))
+        if(!response.startsWith("257"))
             throw new IOException(response);
         return response.startsWith("257");
     }
 
     // list all names of files & directories under directory specified
-    private synchronized ArrayList<String> getNLST(String dir) throws IOException{
+    private synchronized boolean getNLST(String dir) throws IOException{
+        Socket dataSocket = getDataSocket();
         sendLine("NLST " + dir);
-        InputStreamReader inputStreamReader = new InputStreamReader(dataSocket.getInputStream(), StandardCharsets.UTF_8);
-        BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-        ArrayList<String> dirs = new ArrayList<>();
-        String line;
-        while((line = bufferedReader.readLine()) != null) {
-            dirs.add(line.substring(1));
-        }
-        dataSocket.getInputStream().close();
-        inputStreamReader.close();
-        return dirs;
-    }
-
-    // list details of all files and directories under directory specified
-    private synchronized boolean getList(String dir) throws IOException{
-        sendLine("LIST " + dir);
+        response = readLine();
+        if(!response.startsWith("125"))
+            throw new IOException(response);
         InputStreamReader inputStreamReader = new InputStreamReader(dataSocket.getInputStream(), StandardCharsets.UTF_8);
         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
         String line;
         while((line = bufferedReader.readLine()) != null) {
             System.out.println(line);
         }
-        dataSocket.getInputStream().close();
-        inputStreamReader.close();
+        response = readLine();
+        dataSocket.close();
+        if(!response.startsWith("226"))
+            throw new IOException(response);
+        return response.startsWith("226");
+    }
+
+    // list details of all files and directories under directory specified
+    private synchronized boolean getList(String dir) throws IOException{
+        Socket dataSocket = getDataSocket();
+        sendLine("LIST " + dir);
+        response = readLine();
+        if(!response.startsWith("125"))
+            throw new IOException(response);
+        InputStreamReader inputStreamReader = new InputStreamReader(dataSocket.getInputStream(), StandardCharsets.UTF_8);
+        BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+        String line;
+        while((line = bufferedReader.readLine()) != null) {
+            System.out.println(line);
+        }
+        response = readLine();
+        dataSocket.close();
+        if(!response.startsWith("226"))
+            throw new IOException(response);
         return true;
     }
 
     private long getFileSize(String filename) throws IOException{
         sendLine("SIZE " + filename);
         response = readLine();
+        System.out.println(response);
         if(!response.startsWith("213"))
             throw new IOException(response);
         StringTokenizer stringTokenizer = new StringTokenizer(response);
@@ -221,25 +220,23 @@ public class MyFTPClient {
     }
 
     // Retrieve file specified
-    // Get fileSize first in case of response after transfer completing
     private boolean retrieveAsciiFile(String filename) throws IOException{
+        Socket dataSocket = getDataSocket();
+        // fileSize method should be called before RETR
         long fileSize = getFileSize(filename);
         ascii();
         sendLine("RETR " + filename);
         response = readLine();
-        System.out.println(response);
-        // System.out.println(response);
-        // 125 Data connection already open; Transfer starting
         if(!response.startsWith("125"))
             throw new IOException(response);
         BufferedInputStream in = new BufferedInputStream(dataSocket.getInputStream());
         BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(filename));
-        byte[] buffer = new byte[4096];
+        byte[] buffer = new byte[bufferSize];
         long cnt = 1;
         while(in.read(buffer) != -1) {
             out.write(buffer);
             cnt++;
-            System.out.print(String.format("Transferred: %d / %d\r", cnt*4096 ,fileSize));
+            System.out.print(String.format("Transferred: %d / %d\r", cnt*bufferSize ,fileSize));
         }
         out.flush();
         out.close();
@@ -251,6 +248,7 @@ public class MyFTPClient {
     }
 
     private boolean retrieveBinaryFile(String filename) throws IOException{
+        Socket dataSocket = getDataSocket();
         // get fileSize first
         long fileSize = getFileSize(filename);
         bin();
@@ -258,17 +256,20 @@ public class MyFTPClient {
         response = readLine();
         if(!response.startsWith("125"))
             throw new IOException(response);
+
         BufferedInputStream in = new BufferedInputStream(dataSocket.getInputStream());
         BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(filename));
-        byte[] buffer = new byte[4096];
+        byte[] buffer = new byte[bufferSize];
         long cnt = 1;
         while(in.read(buffer) != -1) {
             out.write(buffer);
             cnt++;
-            System.out.print(String.format("Transferred: %d / %d\r", cnt*4096 ,fileSize));
+            System.out.print(String.format("Transferred: %d / %d\r", cnt*bufferSize ,fileSize));
         }
         out.flush();
         System.out.println(String.format("Transferred: %d / %d", fileSize ,fileSize));
+        response = readLine();
+        System.out.println(response);
         out.close();
         in.close();
         return true;
@@ -312,15 +313,11 @@ public class MyFTPClient {
             throw new IOException("socket needs to be connected");
         String line = reader.readLine();
         if(DEBUG)
-            System.out.println("< "+line);
+            System.out.println("< RESPONSE: "+line);
         return line;
     }
 
-    /** @param cmd
-     *         commands sent to client
-     * @throws IOException
-     *         if socket is unopened
-     */
+    // send request to server
     private void sendLine(String cmd) throws IOException{
         if(socket == null)
             throw new IOException("socket needs to be connected");
@@ -328,7 +325,7 @@ public class MyFTPClient {
             writer.write(cmd+"\r\n");
             writer.flush();
             if(DEBUG) {
-                System.out.println(cmd);
+                System.out.println("< CMD: " + cmd);
             }
         } catch (IOException e) {
             socket = null;
@@ -340,18 +337,24 @@ public class MyFTPClient {
         MyFTPClient myFTPClient = new MyFTPClient();
         myFTPClient.connect("192.168.73.1");
         myFTPClient.login("king","0925");
-        //myFTPClient.stor("D:/king.txt");
-        //myFTPClient.renameFile("king.jpg", "kong.jpg");
-        //System.out.println(myFTPClient.pwd());
-        //myFTPClient.mkdir("NewFolder");
-        //ArrayList<String> strs = myFTPClient.getNLST("/");
-        //for(String str: strs)
-        //    System.out.println(str);
-        //myFTPClient.getList("/");
+        myFTPClient.stor("king.txt");
+        myFTPClient.stor("king.mp4");
+        myFTPClient.renameFile("king.txt", "kong.txt");
+        myFTPClient.renameFile("king.mp4", "kong.mp4");
+        System.out.println(myFTPClient.pwd());
+        myFTPClient.mkdir("NewFolder");
+        myFTPClient.toDir("NewFolder");
+        System.out.println(myFTPClient.pwd());
+        myFTPClient.toUpperDir();
+        System.out.println(myFTPClient.pwd());
+        myFTPClient.getNLST("/");
+        myFTPClient.getList("/");
         //myFTPClient.deleteFile("king.txt");
         //myFTPClient.deleteDir("upload");
-        //myFTPClient.retrieveAsciiFile("king.txt");
-        myFTPClient.retrieveBinaryFile("king.mp4");
+        myFTPClient.retrieveAsciiFile("kong.txt");
+        myFTPClient.retrieveBinaryFile("kong.mp4");
+
+
         myFTPClient.close();
     }
 }
