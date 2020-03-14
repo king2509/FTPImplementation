@@ -1,12 +1,9 @@
-import javax.imageio.stream.ImageOutputStreamImpl;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Scanner;
-import java.util.StringTokenizer;
+import java.util.*;
 
-public class MyFTPClient {
+class MyFTPClient {
     private boolean DEBUG = true;
     private Socket socket = null;
     private BufferedReader reader = null;
@@ -212,23 +209,31 @@ public class MyFTPClient {
     }
 
     // list details of all files and directories under directory specified
-    synchronized boolean getList(String dir) throws IOException{
+    synchronized ArrayList<FTPFile> getList(String dir) throws IOException{
         Socket dataSocket = getDataSocket();
         sendLine("LIST " + dir);
         response = readLine();
         if(!response.startsWith("125"))
             throw new IOException(response);
+        ArrayList<FTPFile> FTPFiles= new ArrayList<>();
         InputStreamReader inputStreamReader = new InputStreamReader(dataSocket.getInputStream(), StandardCharsets.UTF_8);
         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
         String line;
         while((line = bufferedReader.readLine()) != null) {
-            System.out.println(line);
+            String[] fileInfo = line.split(" ");
+            String[] newFileInfo = new String[4];
+            int str_i = 0;
+            for(String str: fileInfo) {
+                if(!str.equals(""))
+                    newFileInfo[str_i++] = str;
+            }
+            FTPFiles.add(new FTPFile(newFileInfo));
         }
         response = readLine();
         dataSocket.close();
         if(!response.startsWith("226"))
             throw new IOException(response);
-        return true;
+        return FTPFiles;
     }
 
     long getFileSize(String filename) throws IOException{
@@ -300,6 +305,10 @@ public class MyFTPClient {
 
     // Delete file specified
     synchronized boolean deleteFile(String filename) throws IOException{
+        if(!fileExists(filename)) {
+            System.out.println("No such file");
+            return false;
+        }
         sendLine("DELE " + filename);
         response = readLine();
         if(response.startsWith("550"))
@@ -309,6 +318,10 @@ public class MyFTPClient {
 
     // Delete empty directory specified, cannot delete an nonempty directory
     synchronized boolean deleteDir(String dir) throws IOException{
+        if(!fileExists(dir)) {
+            System.out.println("No such file");
+            return false;
+        }
         sendLine("RMD " + dir);
         response = readLine();
         if(!response.startsWith("250"))
@@ -333,8 +346,6 @@ public class MyFTPClient {
     // check if file/dir exists
     boolean fileExists(String filename) throws IOException{
         ArrayList<String> nameList = getNLST(pwd());
-        for(String str: nameList)
-            System.out.println(str);
         return nameList.contains(filename);
     }
 
