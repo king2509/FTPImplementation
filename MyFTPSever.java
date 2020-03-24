@@ -14,8 +14,7 @@ public class MyFTPSever {
         ServerSocket serverSocket = new ServerSocket(controlPort);
         while(true) {
             Socket socket = serverSocket.accept();
-            int dataPort = controlPort + numOfDataPort + 1;
-            MyFTPWorker w = new MyFTPWorker(socket, dataPort);
+            MyFTPWorker w = new MyFTPWorker(socket);
             System.out.println("socket: " + socket.getPort());
             w.start();
         }

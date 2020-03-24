@@ -11,13 +11,36 @@ import java.util.ArrayList;
 public class Client {
     public static void main(String[] args) throws IOException {
         MyFTPClient myFTPClient = new MyFTPClient();
-        myFTPClient.connect("192.168.73.1");
+        myFTPClient.connect("192.168.73.1",3000);
         myFTPClient.login("king","0925");
-        myFTPClient.getFileSize("king.txt");
+        myFTPClient.deleteFile("upload");
+        //myFTPClient.toUpperDir();
+        //myFTPClient.toUpperDir();
+        //myFTPClient.retrieveAsciiFile("king.mp4");
+        //myFTPClient.retrieveBinaryFile("king.mp4");
+        //myFTPClient.getList("/");
+        //myFTPClient.getNLST("/");
+        //myFTPClient.getList("/");
+        //myFTPClient.bin();
+        //myFTPClient.ascii();
+        //myFTPClient.deleteDir("King");
+        //myFTPClient.renameFile("king.txt","kong.txt");
+        //myFTPClient.uploadFile("king.txt");
+        //myFTPClient.stor("king.txt");
+        //myFTPClient.getFileSize("king.txt");
+        //myFTPClient.deleteFile("King");
+        //myFTPClient.mkdir("King");
+        //myFTPClient.toDir("King");
+        //myFTPClient.toUpperDir();
+
+        //System.out.println(myFTPClient.pwd());
+
+
+        /*myFTPClient.getFileSize("king.txt");
         ArrayList<FTPFile> res = myFTPClient.getList("upload");
         for (FTPFile re : res) {
             System.out.println(re.toString());
-        }
+        }*/
         myFTPClient.close();
     }
 }

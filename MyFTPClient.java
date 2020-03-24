@@ -12,7 +12,6 @@ class MyFTPClient {
     private final int bufferSize = 4096;
 
     MyFTPClient(){
-
     }
 
     synchronized void connect(String ip) throws IOException{
@@ -56,6 +55,7 @@ class MyFTPClient {
         int remotePort = -1;
         sendLine("PASV");
         response = readLine();
+        System.out.println(response);
         if(!response.startsWith("227")) {
             throw new IOException(response);
         }
@@ -106,6 +106,9 @@ class MyFTPClient {
         } catch (Exception e) {
             e.getStackTrace();
         }
+        response = readLine();
+        if(!response.startsWith("221"))
+            throw new IOException(response);
         if(socket != null)
             socket.close();
         System.out.println("Connection closed");
@@ -166,20 +169,22 @@ class MyFTPClient {
     synchronized boolean renameFile(String oldFilename, String newFilename) throws IOException{
         sendLine("RNFR " + oldFilename);
         response = readLine();
+        System.out.println(response);
         if(!response.startsWith("350"))
             throw new IOException("No target file");
         sendLine("RNTO " + newFilename);
         response = readLine();
+        System.out.println(response);
         return response.startsWith("250");
     }
 
     // mkdir  needs to check if directory exists
     synchronized boolean mkdir(String directoryName) throws IOException{
         // if dir exists, then do nothing
-        if(fileExists(directoryName)) {
+        /*if(fileExists(directoryName)) {
             System.out.println("Dir already exists!");
             return true;
-        }
+        }*/
         sendLine("MKD "+ directoryName);
         response = readLine();
         if(!response.startsWith("257"))
@@ -199,6 +204,7 @@ class MyFTPClient {
         ArrayList<String> res = new ArrayList<>();
         String line;
         while((line = bufferedReader.readLine()) != null) {
+            System.out.println(line);
             res.add(line.substring(1));
         }
         response = readLine();
@@ -213,6 +219,7 @@ class MyFTPClient {
         Socket dataSocket = getDataSocket();
         sendLine("LIST " + dir);
         response = readLine();
+        System.out.println(response);
         if(!response.startsWith("125"))
             throw new IOException(response);
         ArrayList<FTPFile> FTPFiles= new ArrayList<>();
@@ -220,7 +227,9 @@ class MyFTPClient {
         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
         String line;
         while((line = bufferedReader.readLine()) != null) {
-            String[] fileInfo = line.split(" ");
+            System.out.println(line);
+            String[] fileInfo = line.split("\t");
+            StringBuilder info = new StringBuilder();
             String[] newFileInfo = new String[4];
             int str_i = 0;
             for(String str: fileInfo) {
@@ -236,7 +245,7 @@ class MyFTPClient {
         return FTPFiles;
     }
 
-    long getFileSize(String filename) throws IOException{
+    private long getFileSize(String filename) throws IOException{
         sendLine("SIZE " + filename);
         response = readLine();
         System.out.println(response);
@@ -248,7 +257,7 @@ class MyFTPClient {
     }
 
     // Retrieve file specified
-    boolean retrieveAsciiFile(String filename) throws IOException{
+    void retrieveAsciiFile(String filename) throws IOException{
         Socket dataSocket = getDataSocket();
         // fileSize method should be called before RETR
         long fileSize = getFileSize(filename);
@@ -257,22 +266,22 @@ class MyFTPClient {
         response = readLine();
         if(!response.startsWith("125"))
             throw new IOException(response);
-        BufferedInputStream in = new BufferedInputStream(dataSocket.getInputStream());
-        BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(filename));
-        byte[] buffer = new byte[bufferSize];
-        long cnt = 1;
-        while(in.read(buffer) != -1) {
-            out.write(buffer);
-            cnt++;
-            System.out.print(String.format("Transferred: %d / %d\r", cnt*bufferSize ,fileSize));
+
+        BufferedReader in = new BufferedReader(new InputStreamReader(dataSocket.getInputStream()));
+        //BufferedInputStream in = new BufferedInputStream(dataSocket.getInputStream());
+        BufferedWriter out = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(filename)));
+        //BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(filename));
+        String line;
+        while((line = in.readLine()) != null) {
+            System.out.println(line);
+            out.write(line+"\r\n");
         }
         out.flush();
         out.close();
-        System.out.println(String.format("Transferred: %d / %d", fileSize ,fileSize));
         response = readLine();
         System.out.println(response);
         in.close();
-        return true;
+        dataSocket.close();
     }
 
     boolean retrieveBinaryFile(String filename) throws IOException{
@@ -305,10 +314,10 @@ class MyFTPClient {
 
     // Delete file specified
     synchronized boolean deleteFile(String filename) throws IOException{
-        if(!fileExists(filename)) {
+        /*if(!fileExists(filename)) {
             System.out.println("No such file");
             return false;
-        }
+        }*/
         sendLine("DELE " + filename);
         response = readLine();
         if(response.startsWith("550"))
@@ -318,10 +327,10 @@ class MyFTPClient {
 
     // Delete empty directory specified, cannot delete an nonempty directory
     synchronized boolean deleteDir(String dir) throws IOException{
-        if(!fileExists(dir)) {
-            System.out.println("No such file");
-            return false;
-        }
+        //if(!fileExists(dir)) {
+        //    System.out.println("No such file");
+        //    return false;
+        //}
         sendLine("RMD " + dir);
         response = readLine();
         if(!response.startsWith("250"))
@@ -330,15 +339,15 @@ class MyFTPClient {
     }
 
     // Mode binary: mp4, jpg, ...
-    private synchronized boolean bin() throws IOException{
-        sendLine("TYPE A");
+    synchronized boolean bin() throws IOException{
+        sendLine("TYPE I");
         String response = readLine();
         return response.startsWith("200");
     }
 
     // Mode ascii: txt
-    private synchronized boolean ascii() throws IOException{
-        sendLine("TYPE I");
+    synchronized boolean ascii() throws IOException{
+        sendLine("TYPE A");
         String response = readLine();
         return response.startsWith("200");
     }
@@ -375,7 +384,6 @@ class MyFTPClient {
             throw e;
         }
     }
-
 }
 
 
