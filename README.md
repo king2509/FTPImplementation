@@ -1,5 +1,8 @@
-# FTPImplementation
+# FTPImplementation 
+
 ## An implementation of FTP protocol, including client & server.
+
+## Introduction
 
 ### Steps to establish the connection:
 1. client send *USER* to server
