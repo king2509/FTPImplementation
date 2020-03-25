@@ -12,7 +12,6 @@
 ### Control socket & Data socket
 
 1. control socket: used for commands transferring
-
 2. data socket: used for data transferring
 
 ### Data Transfer Mode: PASV  
