@@ -10,7 +10,9 @@
 3. logged in if username & password are **valid**. 
 
 ### Control socket & Data socket
+
 #### control socket: used for commands transferring
+
 #### data socket: used for data transferring
 
 ### Data Transfer Mode: PASV  
